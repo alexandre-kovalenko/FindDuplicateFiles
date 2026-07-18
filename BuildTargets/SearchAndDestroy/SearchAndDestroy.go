@@ -38,15 +38,31 @@ func main() {
 }
 
 const (
-	STATE_START            = 0
-	STATE_IN_THE_BLOCK     = 1
-	STATE_OUT_OF_THE_BLOCK = 2
+	STATE_START        = 0
+	STATE_IN_THE_BLOCK = 1
 )
+
+func processBlock(filesToRemove []string, nToBeKept int) (int, int, error) {
+	nDeleted := 0
+	nNotDeleted := 0
+	for _, fname := range filesToRemove {
+		if nToBeKept == 0 {
+			log.Printf("Not deleting %s because there will be no such files left\n", fname)
+			nNotDeleted++
+		} else {
+			log.Printf("Deleting %s\n", fname)
+			if err := os.Remove(fname); err != nil {
+				return nDeleted, nNotDeleted, err
+			}
+			nDeleted++
+		}
+	}
+	return nDeleted, nNotDeleted, nil
+}
 
 func findAndDeleteFiles(pattern string, fileName string) (int, int, error) {
 	rFile := regexp.MustCompile(pattern)
 	rSeparator := regexp.MustCompile(`^` + Constants.BLOCK_SEPARATOR + `$`)
-	// Read lines one by one
 	file, err := os.Open(fileName)
 	if err != nil {
 		return 0, 0, err
@@ -56,48 +72,41 @@ func findAndDeleteFiles(pattern string, fileName string) (int, int, error) {
 	nNotDeleted := 0
 	scanner := bufio.NewScanner(file)
 	state := STATE_START
-	nToBeRemoved := 0
 	nToBeKept := 0
 	var filesToRemove []string
 	for scanner.Scan() {
 		line := scanner.Text()
 		if rSeparator.MatchString(line) {
-			switch state {
-			case STATE_START:
-				state = STATE_IN_THE_BLOCK
-				filesToRemove = make([]string, 0)
-				nToBeRemoved = 0
-				nToBeKept = 0
-			case STATE_IN_THE_BLOCK:
-				// Now we need to figure out whether we are deleting all files
-				// or still leaving some
-				for _, fname := range filesToRemove {
-					if nToBeKept == 0 {
-						log.Printf("Not deleting %s because there will be no such files left\n", fname)
-						nNotDeleted++
-					} else {
-						log.Printf("Deleting %s\n", fname)
-						err := os.Remove(fname)
-						if err != nil {
-							return nDeleted, nNotDeleted, err
-						}
-						nDeleted++
-					}
+			if state == STATE_IN_THE_BLOCK {
+				d, nd, err := processBlock(filesToRemove, nToBeKept)
+				nDeleted += d
+				nNotDeleted += nd
+				if err != nil {
+					return nDeleted, nNotDeleted, err
 				}
-				state = STATE_IN_THE_BLOCK
-				filesToRemove = make([]string, 0)
-				nToBeRemoved = 0
-				nToBeKept = 0
 			}
+			state = STATE_IN_THE_BLOCK
+			filesToRemove = make([]string, 0)
+			nToBeKept = 0
 			continue
 		}
 		if state == STATE_IN_THE_BLOCK {
 			if rFile.MatchString(line) {
 				filesToRemove = append(filesToRemove, line)
-				nToBeRemoved++
 			} else {
 				nToBeKept++
 			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nDeleted, nNotDeleted, err
+	}
+	if state == STATE_IN_THE_BLOCK {
+		d, nd, err := processBlock(filesToRemove, nToBeKept)
+		nDeleted += d
+		nNotDeleted += nd
+		if err != nil {
+			return nDeleted, nNotDeleted, err
 		}
 	}
 	return nDeleted, nNotDeleted, nil
