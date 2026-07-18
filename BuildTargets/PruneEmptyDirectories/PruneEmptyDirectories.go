@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
+
+	"rabbitsden.online/FindDuplicateFiles/Helper"
 )
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -18,16 +21,25 @@ func main() {
 		os.Exit(1)
 	}
 	startTS := time.Now()
-	nPruned, _, err := PruneEmptyDirectories(os.Args[1])
+	path := filepath.Clean(os.Args[1])
+	if err := Helper.ValidateAbsolutePath(path); err != nil {
+		log.Printf("Invalid path: %v\n", err)
+		os.Exit(1)
+	}
+	nPruned, _, err := PruneEmptyDirectories(path)
 	if err != nil {
-		log.Printf("Failed to prune empty directories (%v)... %d have been puned prior to error.\n",
+		log.Printf("Failed to prune empty directories (%v)... %d have been pruned prior to error.\n",
 			err, nPruned)
 		os.Exit(1)
 	}
 	endTS := time.Now()
+	elapsedMS := endTS.Sub(startTS).Milliseconds()
+	rate := 0.0
+	if elapsedMS > 0 {
+		rate = float64(nPruned) / (float64(elapsedMS) / 1000)
+	}
 	log.Printf("Successfully pruned %d empty directories in %d ms (%.02f directories/s) \n",
-		nPruned,
-		endTS.Sub(startTS)/time.Millisecond, float64(nPruned)/(float64(endTS.Sub(startTS))/float64(time.Second)))
+		nPruned, elapsedMS, rate)
 }
 
 const IGNORE_DOT_FILES = false
@@ -46,7 +58,7 @@ func PruneEmptyDirectories(startingPath string) (int, int, error) {
 			continue
 		}
 		if e.IsDir() {
-			subName := startingPath + "/" + e.Name()
+			subName := filepath.Join(startingPath, e.Name())
 			log.Printf("Recursing into %s\n", subName)
 			nPruned, nSurvivedChildren, err := PruneEmptyDirectories(subName)
 			pruned += nPruned
