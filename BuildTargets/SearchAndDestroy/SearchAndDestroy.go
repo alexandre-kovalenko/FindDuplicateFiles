@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"rabbitsden.online/FindDuplicateFiles/Constants"
+	"rabbitsden.online/FindDuplicateFiles/Helper"
 )
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +51,9 @@ func processBlock(filesToRemove []string, nToBeKept int) (int, int, error) {
 			log.Printf("Not deleting %s because there will be no such files left\n", fname)
 			nNotDeleted++
 		} else {
+			if err := Helper.ValidateAbsolutePath(fname); err != nil {
+				return nDeleted, nNotDeleted, err
+			}
 			log.Printf("Deleting %s\n", fname)
 			if err := os.Remove(fname); err != nil {
 				return nDeleted, nNotDeleted, err
